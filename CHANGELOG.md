@@ -1,3 +1,9 @@
+## [v1.4.2](https://github.com/docling-project/docling-eval/releases/tag/v1.4.2) - 2026-07-03
+
+### Fix
+
+* Upgrade lxml versions ([#218](https://github.com/docling-project/docling-eval/issues/218)) ([`5f6e839`](https://github.com/docling-project/docling-eval/commit/5f6e839cff8ffede945566c4ded4642f5c2edc19))
+
 ## [v1.4.1](https://github.com/docling-project/docling-eval/releases/tag/v1.4.1) - 2026-05-28
 
 ### Fix
