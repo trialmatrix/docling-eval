@@ -13,10 +13,6 @@ from datasets import load_dataset
 from docling.datamodel.base_models import BoundingBox, Cluster
 from docling.utils.visualization import draw_clusters
 from docling_core.types.doc.document import DocItem, DoclingDocument, RefItem, TextItem
-from docling_ibm_models.reading_order.reading_order_rb import (
-    PageElement as ReadingOrderPageElement,
-)
-from docling_ibm_models.reading_order.reading_order_rb import ReadingOrderPredictor
 from PIL import Image, ImageDraw, ImageFont
 from pydantic import BaseModel
 from tqdm import tqdm  # type: ignore
@@ -34,6 +30,20 @@ from docling_eval.utils.external_docling_document_loader import (
     ExternalDoclingDocumentLoader,
 )
 from docling_eval.visualisation.visualisations import draw_arrow
+
+# The rule-based reading-order model moved from docling-ibm-models into docling
+# (docling>=2.123.1); docling-ibm-models>=4.0 no longer ships it. Fall back to the
+# old location for docling versions that predate the move.
+try:
+    from docling.models.postprocessing.reading_order_rb import (
+        PageElement as ReadingOrderPageElement,
+    )
+    from docling.models.postprocessing.reading_order_rb import ReadingOrderPredictor
+except ImportError:
+    from docling_ibm_models.reading_order.reading_order_rb import (
+        PageElement as ReadingOrderPageElement,
+    )
+    from docling_ibm_models.reading_order.reading_order_rb import ReadingOrderPredictor
 
 _log = logging.getLogger(__name__)
 

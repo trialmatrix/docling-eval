@@ -19,7 +19,6 @@ import numpy as np
 from datasets import Dataset, load_dataset
 from docling_core.types.doc.document import ContentLayer, DocItem, DoclingDocument
 from docling_core.types.doc.labels import DocItemLabel
-from docling_ibm_models.layoutmodel.labels import LayoutLabels
 from tqdm import tqdm  # type: ignore
 
 from docling_eval.datamodels.dataset_record import DatasetRecordWithPrediction
@@ -37,6 +36,7 @@ from docling_eval.evaluators.layout_evaluator import MissingPredictionStrategy
 from docling_eval.evaluators.pixel.confusion_matrix_exporter import (
     ConfusionMatrixExporter,
 )
+from docling_eval.evaluators.pixel.layout_labels import LayoutLabels
 from docling_eval.evaluators.pixel.multi_label_confusion_matrix import (
     MultiLabelConfusionMatrix,
 )
