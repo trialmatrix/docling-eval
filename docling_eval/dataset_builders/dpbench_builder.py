@@ -3,7 +3,7 @@ import logging
 import os
 from io import BytesIO
 from pathlib import Path
-from typing import Dict, Iterable, Set
+from typing import Dict, Iterable, List, Mapping, Optional, Set, Tuple
 
 from docling_core.types import DoclingDocument
 from docling_core.types.doc import (
@@ -18,6 +18,8 @@ from docling_core.types.doc import (
 )
 from docling_core.types.io import DocumentStream
 from PIL.Image import Image
+from pydantic import BaseModel
+from PyPDF2 import PdfReader
 from tqdm import tqdm
 
 from docling_eval.datamodels.dataset_record import DatasetRecord
@@ -82,6 +84,110 @@ PRED_HTML_EXPORT_LABELS: Set[DocItemLabel] = {
 }
 
 
+# Revision of the ``upstage/dp-bench`` HF dataset this builder is validated
+# against. The coordinate convention of ``reference.json`` changed between
+# revisions (see ``reference_coords_to_page_bbox``), so the revision is pinned to
+# keep future upstream changes from silently corrupting the ground truth.
+DPBENCH_HF_REVISION = "24702c61a2fb13325534be664653bc6e60250d13"
+
+# Resolution at which upstage/dp-bench rendered the page images that the
+# absolute pixel coordinates of ``reference.json`` refer to (revision 24702c6).
+DPBENCH_REFERENCE_DPI = 200.0
+
+# Documents whose reference image was not rendered at DPBENCH_REFERENCE_DPI.
+# Maps the file name to the (width, height) in pixels of the reference image,
+# derived by comparing the absolute coordinates of revision 24702c6 against the
+# normalized coordinates of the previous revision (b29fd1c).
+DPBENCH_REFERENCE_IMAGE_SIZES: Dict[str, Tuple[float, float]] = {
+    # 1728 x 2592 pt page (24 x 36 in), reference image is 1205 x 1810 px.
+    "01030000000141.pdf": (1205.0, 1810.0),
+}
+
+
+class PdfPageGeometry(BaseModel):
+    """PDF page boxes in PDF user space (points, bottom-left origin)."""
+
+    media_box: Tuple[float, float, float, float]  # (left, bottom, right, top)
+    crop_box: Tuple[float, float, float, float]  # (left, bottom, right, top)
+
+    @classmethod
+    def from_pdf(cls, pdf_path: Path, page_index: int = 0) -> "PdfPageGeometry":
+        page = PdfReader(str(pdf_path)).pages[page_index]
+
+        def _box(rect) -> Tuple[float, float, float, float]:
+            return (
+                float(rect.left),
+                float(rect.bottom),
+                float(rect.right),
+                float(rect.top),
+            )
+
+        return cls(media_box=_box(page.mediabox), crop_box=_box(page.cropbox))
+
+
+def reference_coords_to_page_bbox(
+    coordinates: List[Mapping[str, float]],
+    page_width: float,
+    page_height: float,
+    geometry: Optional[PdfPageGeometry] = None,
+    reference_image_size: Optional[Tuple[float, float]] = None,
+) -> BoundingBox:
+    """
+    Convert DP-Bench ``reference.json`` polygon coordinates into a page bbox.
+
+    Two conventions exist across revisions of ``upstage/dp-bench``:
+
+    * up to b29fd1c: coordinates are normalized to [0, 1] relative to the page
+      (the PDF CropBox, which is what docling reports as the page size).
+    * since 24702c6: coordinates are absolute pixels of the page image rendered
+      at ``DPBENCH_REFERENCE_DPI`` from the full PDF MediaBox (top-left
+      origin). For pages whose CropBox is smaller than their MediaBox the
+      CropBox offset has to be removed. A few documents were rendered at a
+      different size, given by ``reference_image_size`` (width, height) in
+      pixels of the MediaBox rendering.
+
+    Returns a TOPLEFT bbox in page coordinates (points of the CropBox).
+    """
+    xs = [float(c["x"]) for c in coordinates]
+    ys = [float(c["y"]) for c in coordinates]
+    min_x, max_x, min_y, max_y = min(xs), max(xs), min(ys), max(ys)
+
+    if max_x <= 1.0 and max_y <= 1.0:
+        # Normalized [0, 1] page coordinates (older dataset revisions).
+        return BoundingBox(
+            l=min_x * page_width,
+            r=max_x * page_width,
+            t=min_y * page_height,
+            b=max_y * page_height,
+            coord_origin=CoordOrigin.TOPLEFT,
+        )
+
+    if geometry is not None:
+        media_l, media_b, media_r, media_t = geometry.media_box
+        crop_l, _, _, crop_t = geometry.crop_box
+        media_width = media_r - media_l
+        media_height = media_t - media_b
+        offset_x = crop_l - media_l
+        offset_y = media_t - crop_t
+    else:
+        media_width, media_height = page_width, page_height
+        offset_x = offset_y = 0.0
+
+    if reference_image_size is not None:
+        scale_x = reference_image_size[0] / media_width
+        scale_y = reference_image_size[1] / media_height
+    else:
+        scale_x = scale_y = DPBENCH_REFERENCE_DPI / 72.0
+
+    return BoundingBox(
+        l=min_x / scale_x - offset_x,
+        r=max_x / scale_x - offset_x,
+        t=min_y / scale_y - offset_y,
+        b=max_y / scale_y - offset_y,
+        coord_origin=CoordOrigin.TOPLEFT,
+    )
+
+
 class DPBenchDatasetBuilder(BaseEvaluationDatasetBuilder):
     """
     DPBench dataset builder implementing the base dataset builder interface.
@@ -96,6 +202,7 @@ class DPBenchDatasetBuilder(BaseEvaluationDatasetBuilder):
         split: str = "test",
         begin_index: int = 0,
         end_index: int = -1,
+        revision: str = DPBENCH_HF_REVISION,
     ):
         """
         Initialize the DPBench dataset builder.
@@ -105,10 +212,11 @@ class DPBenchDatasetBuilder(BaseEvaluationDatasetBuilder):
             split: Dataset split to use
             begin_index: Start index for processing (inclusive)
             end_index: End index for processing (exclusive), -1 means process all
+            revision: Revision of the upstage/dp-bench HF dataset
         """
         super().__init__(
             name="DPBench",
-            dataset_source=HFSource(repo_id="upstage/dp-bench"),
+            dataset_source=HFSource(repo_id="upstage/dp-bench", revision=revision),
             target=target,
             split=split,
             begin_index=begin_index,
@@ -125,6 +233,8 @@ class DPBenchDatasetBuilder(BaseEvaluationDatasetBuilder):
         page_image: Image,
         page_width: float,
         page_height: float,
+        geometry: Optional[PdfPageGeometry] = None,
+        reference_image_size: Optional[Tuple[float, float]] = None,
     ) -> None:
         """
         Update ground truth document with annotations.
@@ -136,42 +246,21 @@ class DPBenchDatasetBuilder(BaseEvaluationDatasetBuilder):
             page_image: Page image
             page_width: Page width
             page_height: Page height
+            geometry: PDF page boxes, needed for absolute reference coordinates
+            reference_image_size: Size of the reference image, if not at
+                DPBENCH_REFERENCE_DPI
         """
         label = annots["category"]
-
-        # Extract coordinates
-        min_x = annots["coordinates"][0]["x"]
-        max_x = annots["coordinates"][0]["x"]
-        min_y = annots["coordinates"][0]["y"]
-        max_y = annots["coordinates"][0]["y"]
-
-        for coor in annots["coordinates"]:
-            min_x = min(min_x, coor["x"])
-            max_x = max(max_x, coor["x"])
-            min_y = min(min_y, coor["y"])
-            max_y = max(max_y, coor["y"])
-
-        # upstage/dp-bench commit 24702c6 changed reference.json coords from
-        # normalized [0,1] to absolute image pixels. Detect and normalize so
-        # crop_bounding_box receives consistent [0,1]-scaled page units.
-        if max_x > 1.0 or max_y > 1.0:
-            img_w = float(page_image.width)
-            img_h = float(page_image.height)
-            min_x = min_x / img_w
-            max_x = max_x / img_w
-            min_y = min_y / img_h
-            max_y = max_y / img_h
 
         text = annots["content"]["text"].replace("\n", " ")
         html = annots["content"]["html"]
 
-        # Create bounding box
-        bbox = BoundingBox(
-            l=min_x * page_width,
-            r=max_x * page_width,
-            t=min_y * page_height,
-            b=max_y * page_height,
-            coord_origin=CoordOrigin.TOPLEFT,
+        bbox = reference_coords_to_page_bbox(
+            annots["coordinates"],
+            page_width=page_width,
+            page_height=page_height,
+            geometry=geometry,
+            reference_image_size=reference_image_size,
         )
 
         # Create provenance
@@ -335,6 +424,8 @@ class DPBenchDatasetBuilder(BaseEvaluationDatasetBuilder):
             # Get page dimensions
             page_width = true_doc.pages[1].size.width
             page_height = true_doc.pages[1].size.height
+            geometry = PdfPageGeometry.from_pdf(pdf_path)
+            reference_image_size = DPBENCH_REFERENCE_IMAGE_SIZES.get(filename)
 
             # Process each element in the annotation
             for elem in annots["elements"]:
@@ -345,6 +436,8 @@ class DPBenchDatasetBuilder(BaseEvaluationDatasetBuilder):
                     page_image=true_page_images[0],
                     page_width=page_width,
                     page_height=page_height,
+                    geometry=geometry,
+                    reference_image_size=reference_image_size,
                 )
 
             # Extract images from the ground truth document
