@@ -23,7 +23,6 @@ from docling_core.types.doc.page import (
     TextCell,
 )
 from docling_core.types.io import DocumentStream
-from google.protobuf.json_format import MessageToDict
 
 from docling_eval.datamodels.dataset_record import (
     DatasetRecord,
@@ -877,6 +876,7 @@ class GoogleDocAIPredictionProvider(BasePredictionProvider):
         # Import guards
         try:
             from google.cloud import documentai
+            from google.protobuf.json_format import MessageToDict
         except ImportError:
             raise ImportError(
                 "google.cloud package is missing. Install optional dependencies."
