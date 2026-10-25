@@ -19,6 +19,8 @@
 
 Evaluate [Docling](https://github.com/docling-project/docling) on variety of datasets.
 
+This fork requires Python 3.11 or a newer Python 3 release.
+
 ## Features
 
 Evaluate docling on various datasets. You can use the cli
