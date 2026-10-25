@@ -472,7 +472,7 @@ class ConfusionMatrixExporter:
             zero_col_indices = np.nonzero(colsums == 0)[0]  # Zero column indices
             for zero_col_idx in zero_col_indices:
                 col_idx = zero_col_idx + startcol + 2
-                col_letter = get_column_letter(col_idx)
+                col_letter = get_column_letter(int(col_idx))
                 ws.column_dimensions[col_letter].hidden = True
 
         if hide_zero_rows:
@@ -480,7 +480,7 @@ class ConfusionMatrixExporter:
             zero_row_indices = np.nonzero(rowsums == 0)[0]  # Zero row indices
             for zero_row_idx in zero_row_indices:
                 row_idx = zero_row_idx + startrow + 2
-                ws.row_dimensions[row_idx].hidden = True
+                ws.row_dimensions[int(row_idx)].hidden = True
 
         return ws.max_row, ws.max_column
 
