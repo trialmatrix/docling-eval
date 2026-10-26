@@ -75,7 +75,7 @@ def discover_batch_sources(
 
 
 def find_duplicate_doc_ids(
-    subset_sources: Dict[str, List[Path]]
+    subset_sources: Dict[str, List[Path]],
 ) -> Dict[str, List[str]]:
     """Return doc-id collisions across subsets keyed by document id."""
     doc_id_to_subsets: Dict[str, List[str]] = {}

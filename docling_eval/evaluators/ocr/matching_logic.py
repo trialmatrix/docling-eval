@@ -134,7 +134,7 @@ def refine_prediction_to_many_gt_boxes(
     for gt_box, boxes_info in sorted_intersections[1:]:
         can_be_added_to_line: bool = True
         for anchor_box, _ in [sorted_intersections[0]]:
-            (_, _, _, _, _, x_iou, y_iou) = calculate_box_intersection_info_extended(
+            _, _, _, _, _, x_iou, y_iou = calculate_box_intersection_info_extended(
                 gt_box.bbox, anchor_box.bbox
             )
 
@@ -166,7 +166,7 @@ def refine_prediction_to_many_gt_boxes(
     for gt_box, boxes_info in sorted_intersections[1:]:
         can_be_added_to_column: bool = True
         for anchor_box, _ in [sorted_intersections[0]]:
-            (_, _, _, _, _, x_iou, y_iou) = calculate_box_intersection_info_extended(
+            _, _, _, _, _, x_iou, y_iou = calculate_box_intersection_info_extended(
                 gt_box.bbox, anchor_box.bbox
             )
 

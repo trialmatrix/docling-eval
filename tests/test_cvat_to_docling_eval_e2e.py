@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Example pipeline that demonstrates chaining CVAT annotation processing 
+Example pipeline that demonstrates chaining CVAT annotation processing
 through to layout evaluation.
 
 This script:
 1. Converts CVAT annotation files to DoclingDocument JSON
-2. Creates a ground truth dataset using FileDatasetBuilder 
+2. Creates a ground truth dataset using FileDatasetBuilder
 3. Creates an evaluation dataset using FilePredictionProvider
 4. Runs layout evaluation on the results
 """
